@@ -93,6 +93,11 @@ class BaseStatusRenderer:
     def render(self, theme=None):
         pass
 
+    @property
+    @abstractmethod
+    def status_table(self):
+        pass
+
 
 class LegacyStatusRenderer(BaseStatusRenderer):
     """Legacy tabulate based flat table layout"""
@@ -144,6 +149,10 @@ class LegacyStatusRenderer(BaseStatusRenderer):
     def render_to_str(self, theme=None, width=200):
         """Capture output to string"""
 
+        return self._status_table
+
+    @property
+    def status_table(self):
         return self._status_table
 
 
@@ -262,6 +271,10 @@ class FlatStatusRenderer(BaseStatusRenderer):
         _printer.print(self._status_table)
 
         return _printer.file.getvalue()
+
+    @property
+    def status_table(self):
+        return self._status_table
 
 
 class NarrowStatusRenderer(BaseStatusRenderer):
@@ -465,6 +478,10 @@ class NarrowStatusRenderer(BaseStatusRenderer):
         _printer.print(self._status_table)
 
         return _printer.file.getvalue()
+
+    @property
+    def status_table(self):
+        return self._status_table
 
 
 def iter_status_renderers():

@@ -47,6 +47,11 @@ from maestrowf.utils import \
     create_parentdir, create_dictionary, LoggerUtility, make_safe_path, \
     start_process
 
+from rich.panel import Panel
+from rich.theme import Theme
+from textual.app import App
+from textual.widgets import ScrollView
+from textual.widget import Widget
 
 # Program Globals
 LOGGER = logging.getLogger(__name__)
@@ -57,6 +62,94 @@ DEBUG_FORMAT = "[%(asctime)s: %(levelname)s] " \
                "[%(module)s: %(lineno)d] %(message)s"
 LFORMAT = "[%(asctime)s: %(levelname)s] %(message)s"
 ACCEPTED_INPUT = set(["yes", "y"])
+
+
+class MaestroStatus(Widget):
+    def __init__(self, maestro_args, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.directory_list = maestro_args.directory
+        self.layout = maestro_args.layout
+
+    def render(self):
+    
+        if self.directory_list:
+
+            for path in self.directory_list:
+                abs_path = os.path.abspath(path)
+
+                status = Conductor.get_status(abs_path)
+                status_layout = self.layout
+
+                if status:
+                    try:
+                        # Wasteful to not reuse this renderer for all paths?
+                        status_renderer = status_renderer_factory.get_renderer(
+                            status_layout)
+
+                    except ValueError:
+                        print("Layout '{}' not implemented.".format(status_layout))
+                        raise
+
+                    status_renderer.layout(status_data=status,
+                                           study_title=abs_path,
+                                           filter_dict=None)
+
+                else:
+                    return Panel("No status to report -- the Maestro study in this path "
+                                 "either unexpectedly crashed or the path does not contain "
+                                 "a Maestro study.")
+
+        else:
+            return Panel("Path(s) or glob(s) did not resolve to a directory(ies) that "
+                         "exists.")
+
+        return status_renderer.status_table
+
+class LiveStatusApp(App):
+    """Prototype interactive status in the terminal"""
+    def __init__(self, *args, maestro_args=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.maestro_args = maestro_args
+
+    async def on_load(self):
+        """Sent before starting application mode"""
+
+        # Key bindings
+
+        await self.bind("q", "quit", "Quit")
+
+        # Setup the theme
+        status_renderer = status_renderer_factory.get_renderer(
+            self.maestro_args.layout
+        )
+        self.console.push_theme(Theme(status_renderer._theme_dict))
+
+    async def on_mount(self):
+        """Call after terminal goes into app mode"""
+
+        # Setup the theme
+        status_renderer = status_renderer_factory.get_renderer(
+            self.maestro_args.layout
+        )
+        self.console.push_theme(Theme(status_renderer._theme_dict))
+        
+        # Create the view/widgets
+        self.body = body = ScrollView(auto_width=True)
+        
+        await self.view.dock(body)
+
+        # Add the actual content
+        async def add_content():
+            status_table = MaestroStatus(self.maestro_args)
+
+            await body.update(status_table)
+
+        await self.call_later(add_content)
+
+
+def live_status_study(args):
+    """Check and print the status of an executing study."""
+    LiveStatusApp.run(maestro_args=args)
 
 
 def status_study(args):
@@ -450,6 +543,19 @@ def setup_argparser():
         default='flat',
         help="Alternate status table layouts. [Default: %(default)s]")
     status.set_defaults(func=status_study)
+
+    # subparser for a status subcommand
+    live_status = subparsers.add_parser(
+        'live_status',
+        help="Interactive study status monitoring.")
+    live_status.add_argument(
+        "directory", type=str, nargs="+",
+        help="Directory containing a launched study.")
+    live_status.add_argument(
+        "--layout", type=str, choices=status_renderer_factory.get_layouts(),
+        default='flat',
+        help="Alternate status table layouts. [Default: %(default)s]")
+    live_status.set_defaults(func=live_status_study)
 
     # global options
     parser.add_argument(
